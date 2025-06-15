@@ -1,4 +1,6 @@
 import math
+import numpy as np
+from sklearn.linear_model import LinearRegression
 
 def calculate_team_a_expected_result(a_elo,b_elo):
     return 1 / (1 + pow(10,-(a_elo-b_elo)/600))
@@ -74,3 +76,43 @@ def get_match_res_prob(lambda_home,lambda_away):
                 prob_home_loss += prob_outcome
                 
     return (prob_home_win, prob_draw, prob_home_loss)
+
+# Match Result Probability using Poisson Distribution
+# This class models football (soccer) match outcomes using Poisson-distributed goal predictions
+class MRP_Poisson_Dist:
+
+    def fit(self, elo_diff, home_score, away_score):
+        """
+        Fit linear regression models to predict expected number of goals for home and away teams.
+        
+        Parameters:
+        elo_diff (array-like): Difference in ELO ratings between teams([Home score]-[Away score]) (features).
+        home_score (array-like): Actual goals scored by the home team (target).
+        away_score (array-like): Actual goals scored by the away team (target).
+        """
+        self.model_home = LinearRegression()
+        self.model_away = LinearRegression()
+        
+        # Fit separate linear models for home and away goal prediction
+        self.model_home.fit(elo_diff, home_score)
+        self.model_away.fit(elo_diff, away_score)
+
+    def random_res(self, elo_diff):
+        """
+        Generate a random match result based on predicted goal distributions.
+
+        Parameters:
+        elo_diff (array-like): Difference in ELO ratings for the current match([Home score]-[Away score]).
+
+        Returns:
+        tuple: Randomly generated (home_goals, away_goals) using Poisson distributions.
+        """
+        # Predict expected number of goals (lambda) for home and away teams
+        lambda_h = self.model_home.predict(elo_diff)
+        lambda_a = self.model_away.predict(elo_diff)
+
+        # Sample actual goals from Poisson distributions using predicted lambdas
+        home_goals = np.random.poisson(lambda_h)
+        away_goals = np.random.poisson(lambda_a)
+
+        return (home_goals, away_goals)
