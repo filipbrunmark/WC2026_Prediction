@@ -1,9 +1,22 @@
+from collections import defaultdict
+import pandas as pd
 import math
 import numpy as np
 from sklearn.linear_model import LinearRegression
 
 def calculate_team_a_expected_result(a_elo,b_elo):
     return 1 / (1 + pow(10,-(a_elo-b_elo)/600))
+
+
+def update_elo(a_elo, b_elo, score_diff, i):
+    if (score_diff)>0:
+        (new_a_elo, new_b_elo) = update_elo_win(a_elo,b_elo,i) 
+    elif (score_diff)==0:
+        (new_a_elo, new_b_elo) = update_elo_draw(a_elo,b_elo,i) 
+    else:
+        (new_b_elo, new_a_elo) = update_elo_win(b_elo,a_elo,i)
+
+    return (new_a_elo,new_b_elo)
 
 def update_elo_draw(a_elo, b_elo, i):
     w = 0.5
@@ -116,3 +129,99 @@ class MRP_Poisson_Dist:
         away_goals = np.random.poisson(lambda_a)
 
         return (home_goals, away_goals)
+
+
+
+def get_placement(df):
+    """
+    Calculates the final placement of teams based on match results.
+
+    Parameters:
+        df (pd.DataFrame): A DataFrame containing match results with columns:
+                           'home_team', 'away_team', 'home_score', 'away_score'.
+
+    Returns:
+        np.ndarray: A NumPy array of team names ordered by final table placement.
+                    Ranking is based on points, then goal difference, then goals for.
+    """
+
+    # Initialize dictionaries with default values of 0 for each team
+    points = defaultdict(int)       # Total points (3 for win, 1 for draw, 0 for loss)
+    goal_diff = defaultdict(int)    # Goal difference (goals scored - goals conceded)
+    goals_for = defaultdict(int)    # Total goals scored (used as tie-breaker)
+
+    # Loop over each match and update team stats
+    for _, row in df.iterrows():
+        home = row['home_team']
+        away = row['away_team']
+        home_score = row['home_score']
+        away_score = row['away_score']
+
+        # Update points based on match result
+        if home_score > away_score:
+            points[home] += 3
+        elif home_score < away_score:
+            points[away] += 3
+        else:
+            points[home] += 1
+            points[away] += 1
+
+        # Update goal difference
+        goal_diff[home] += home_score - away_score
+        goal_diff[away] += away_score - home_score
+
+        # Update total goals scored
+        goals_for[home] += home_score
+        goals_for[away] += away_score
+
+    # Create a table of teams and their stats
+    table = pd.DataFrame({
+        'team': list(points.keys()),
+        'points': [points[team] for team in points],
+        'goal_diff': [goal_diff[team] for team in points],
+        'goals_for': [goals_for[team] for team in points]  # optional tie-breaker
+    })
+
+    # Sort by points (descending), then goal difference, then goals scored
+    table = table.sort_values(by=['points', 'goal_diff', 'goals_for'], ascending=False)
+
+    # Return teams in order of their final placement
+    return table['team'].to_numpy()
+
+# From datafram with all group matches in order
+def simulate_group_play(df_group: pd.DataFrame, starting_elo: dict, mrp_model: MRP_Poisson_Dist):
+    """
+    Simulate one group play
+    
+    Parameters:
+    df_group (Dataframe): With all games in order, first match in row 0, columns: 'home_team' and 'away_team'.
+    starting_elo (dict): Current elo rating for all teams, type: dict['Team'] = elo_rating.
+    mrp_model (MRP_Poisson_Dist): Model for predicting match res based on elo diff.
+
+    Returns:
+    Dataframe: With all games in order and added results for each match, new columns: 'home_score' and 'away_score'.
+    """
+    current_elo = starting_elo.copy()
+    df_group_copy = df_group.copy()
+    home_scores = []
+    away_scores = []
+    importance = 25
+
+    for index, row in df_group.iterrows():
+        home_team = row['home_team']
+        away_team = row['away_team']
+        home_elo = current_elo[home_team]
+        away_elo = current_elo[away_team]
+
+        (home_goals, away_goals) = mrp_model.random_res(pd.DataFrame([[home_elo - away_elo]], columns=["elo_diff"]))
+        home_scores.append(home_goals[0])
+        away_scores.append(away_goals[0])
+        
+        (new_home_elo, new_away_elo) = update_elo(home_elo, away_elo, (home_goals-away_goals), importance)
+        current_elo[home_team] = new_home_elo
+        current_elo[away_team] = new_away_elo
+
+    df_group_copy['home_score'] = home_scores
+    df_group_copy['away_score'] = away_scores
+
+    return df_group_copy
