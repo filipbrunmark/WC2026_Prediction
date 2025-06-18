@@ -3,6 +3,7 @@ import pandas as pd
 import math
 import numpy as np
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
 
 # ---------------------------------------
 # 🔹 ELO CALCULATION UTILITIES
@@ -127,12 +128,21 @@ def get_match_res_prob(lambda_home, lambda_away):
 class MRP_Poisson_Dist:
     """
     Match Result Prediction using Poisson Distribution and linear regression based on ELO difference.
-    """
+    """ 
+    model_home: LinearRegression # Home regression model
+    model_away: LinearRegression # Away regression model
+    X: pd.DataFrame # Features trained on (array-like)
+    home_score_true: pd.DataFrame # True score home (array-like)
+    away_score_true: pd.DataFrame # True score away (array-like)
 
     def fit(self, elo_diff, home_score, away_score):
         """
         Fit linear models to predict home and away score from ELO difference.
         """
+        self.X = elo_diff
+        self.home_score_true = home_score
+        self.away_score_true = away_score
+
         self.model_home = LinearRegression()
         self.model_away = LinearRegression()
         self.model_home.fit(elo_diff, home_score)
@@ -158,6 +168,13 @@ class MRP_Poisson_Dist:
         away_score = self.model_away.predict(pd.DataFrame(elo_diff, columns=["elo_diff"]))
 
         return (home_score, away_score)
+
+    def mean_squared_error(self):
+        (home_score_pred, away_score_pred) = self.predict(self.X)
+        return (
+        mean_squared_error(self.home_score_true, home_score_pred), 
+        mean_squared_error(self.away_score_true, away_score_pred)
+        )
 
 
 # ---------------------------------------
