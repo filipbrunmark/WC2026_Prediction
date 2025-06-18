@@ -131,7 +131,7 @@ class MRP_Poisson_Dist:
 
     def fit(self, elo_diff, home_score, away_score):
         """
-        Fit linear models to predict home and away goals from ELO difference.
+        Fit linear models to predict home and away score from ELO difference.
         """
         self.model_home = LinearRegression()
         self.model_away = LinearRegression()
@@ -140,15 +140,25 @@ class MRP_Poisson_Dist:
 
     def random_res(self, elo_diff):
         """
-        Generate a random match result (goals) using fitted Poisson models.
+        Generate a random match result (score) using fitted Poisson models.
         """
         lambda_h = self.model_home.predict(elo_diff)
         lambda_a = self.model_away.predict(elo_diff)
 
-        home_goals = np.random.poisson(lambda_h)
-        away_goals = np.random.poisson(lambda_a)
+        home_score = np.random.poisson(lambda_h)
+        away_score = np.random.poisson(lambda_a)
 
-        return home_goals, away_goals
+        return home_score, away_score
+
+    def predict(self, elo_diff):
+        """
+        Predict home and away score from ELO difference.
+        """
+        home_score = self.model_home.predict(pd.DataFrame(elo_diff, columns=["elo_diff"]))
+        away_score = self.model_away.predict(pd.DataFrame(elo_diff, columns=["elo_diff"]))
+
+        return (home_score, away_score)
+
 
 # ---------------------------------------
 # 🔹 STANDINGS / TABLE PLACEMENT
