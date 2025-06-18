@@ -125,9 +125,121 @@ def get_match_res_prob(lambda_home, lambda_away):
 # 🔹 POISSON-BASED MATCH PREDICTION MODEL
 # ---------------------------------------
 
-class MRP_Poisson_Dist:
+class MRPModelTemplate:
     """
-    Match Result Prediction using Poisson Distribution and linear regression based on ELO difference.
+    Base class template for modeling match predictions.
+    This class provides the structure and common interface,
+    but methods need to be implemented by subclasses.
+    """
+
+    def __init__(self):
+        # Initialize any shared attributes here
+        pass
+
+    def fit(self, X, y_home, y_away):
+        """
+        Fit the model to training data.
+
+        Parameters:
+        - X: Features (e.g., elo difference)
+        - y_home: Target variable for home team (e.g., goals scored)
+        - y_away: Target variable for away team (e.g., goals scored)
+        """
+        raise NotImplementedError("Subclasses must implement fit()")
+
+    def predict(self, X):
+        """
+        Predict expected outputs (e.g., expected goals) given input features.
+
+        Returns:
+        Tuple of predictions (home_pred, away_pred)
+        """
+        raise NotImplementedError("Subclasses must implement predict()")
+
+    def random_result(self, X):
+        """
+        Generate a random match result based on model predictions.
+        For example, sample goals scored from distributions.
+
+        Returns:
+        Tuple of randomly generated match result (home_goals, away_goals)
+        """
+        raise NotImplementedError("Subclasses must implement random_result()")
+
+    def mean_squared_error(self):
+        """
+        Compute mean squared error.
+
+        Returns:
+        Mean squared error(MSE)
+        """
+        raise NotImplementedError("Subclasses must implement evaluate()")
+
+from sklearn.ensemble import RandomForestRegressor
+import numpy as np
+
+class RandomForestMRPModel(MRPModelTemplate):
+    """
+    A match result prediction model using Random Forest regression
+    based on ELO difference as the input feature.
+    """
+
+    def __init__(self, n_estimators=100, random_state=42):
+        # Initialize Random Forest models for home and away goals
+        self.model_home = RandomForestRegressor(n_estimators=n_estimators, random_state=random_state)
+        self.model_away = RandomForestRegressor(n_estimators=n_estimators, random_state=random_state)
+
+    def fit(self, X, y_home, y_away):
+        """
+        Fit Random Forest regressors to predict goals for home and away teams.
+        """
+        self.X = X
+        self.home_score_true = y_home
+        self.away_score_true = y_away
+
+        self.model_home.fit(X, y_home)
+        self.model_away.fit(X, y_away)
+
+    def predict(self, X):
+        """
+        Predict expected goals for home and away teams.
+
+        Returns:
+        - Tuple of (home_goals_pred, away_goals_pred)
+        """
+        lambda_home = self.model_home.predict(X)
+        lambda_away = self.model_away.predict(X)
+        return lambda_home, lambda_away
+
+    def random_result(self, X):
+        """
+        Sample a random match result based on Poisson distributions
+        using predicted expected goals.
+
+        Returns:
+        - Tuple of (home_goals_sampled, away_goals_sampled)
+        """
+        lambda_home, lambda_away = self.predict(X)
+        home_goals = np.random.poisson(lam=lambda_home)
+        away_goals = np.random.poisson(lam=lambda_away)
+        return home_goals, away_goals
+
+    def mean_squared_error(self):
+        """
+        Compute the mean squared error of the model predictions.
+
+        Returns:
+        - MSE from home and away team
+        """
+
+        pred_home, pred_away = self.predict(self.X)
+        mse_home = mean_squared_error(self.home_score_true, pred_home)
+        mse_away = mean_squared_error(self.away_score_true, pred_away)
+        return mse_home, mse_away
+
+class LinearRegressionMRPModel(MRPModelTemplate):
+    """
+    Match Result Prediction with linear regression based on ELO difference.
     """ 
     model_home: LinearRegression # Home regression model
     model_away: LinearRegression # Away regression model
@@ -148,7 +260,7 @@ class MRP_Poisson_Dist:
         self.model_home.fit(elo_diff, home_score)
         self.model_away.fit(elo_diff, away_score)
 
-    def random_res(self, elo_diff):
+    def random_result(self, elo_diff):
         """
         Generate a random match result (score) using fitted Poisson models.
         """
@@ -169,6 +281,9 @@ class MRP_Poisson_Dist:
 
         return (home_score, away_score)
 
+        """
+        Get mean squared error from prediction
+        """
     def mean_squared_error(self):
         (home_score_pred, away_score_pred) = self.predict(self.X)
         return (
@@ -225,14 +340,14 @@ def get_placement(df):
 # 🔹 GROUP MATCH SIMULATION
 # ---------------------------------------
 
-def simulate_group_play(df_group: pd.DataFrame, starting_elo: dict, mrp_model: MRP_Poisson_Dist):
+def simulate_group_play(df_group: pd.DataFrame, starting_elo: dict, mrp_model: MRPModelTemplate):
     """
     Simulate the results of a full group play using a match result prediction model.
 
     Parameters:
         df_group (DataFrame): All group games (ordered), with 'home_team' and 'away_team'.
         starting_elo (dict): Current ELO ratings for each team.
-        mrp_model (MRP_Poisson_Dist): Model to generate match results.
+        mrp_model (MRPModelTemplate): Model to generate match results.
 
     Returns:
         DataFrame: Original df_group with added 'home_score' and 'away_score' columns.
@@ -250,7 +365,7 @@ def simulate_group_play(df_group: pd.DataFrame, starting_elo: dict, mrp_model: M
         away_elo = current_elo[away]
 
         # Predict result
-        home_goals, away_goals = mrp_model.random_res(pd.DataFrame([[home_elo - away_elo]], columns=["elo_diff"]))
+        home_goals, away_goals = mrp_model.random_result(pd.DataFrame([[home_elo - away_elo]], columns=["elo_diff"]))
         home_scores.append(home_goals[0])
         away_scores.append(away_goals[0])
 
